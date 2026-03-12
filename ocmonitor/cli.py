@@ -2,7 +2,7 @@
 
 import json
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
@@ -39,11 +39,11 @@ def json_serializer(obj):
 @contextmanager
 def cli_error_context(ctx: click.Context, operation_name: str):
     """Context manager for consistent CLI error handling across all commands.
-    
+
     Usage:
         with cli_error_context(ctx, "analyzing sessions"):
             result = perform_operation()
-    
+
     Args:
         ctx: Click context object containing verbose flag
         operation_name: Human-readable description of the operation (for error messages)
@@ -62,9 +62,9 @@ def cli_error_context(ctx: click.Context, operation_name: str):
 
 def handle_output_format(result: Any, output_format: str) -> None:
     """Handle output formatting for CLI results.
-    
+
     Centralizes JSON/CSV/table output logic used across multiple commands.
-    
+
     Args:
         result: The result data to output
         output_format: One of 'json', 'csv', or 'table'
@@ -79,21 +79,21 @@ def handle_output_format(result: Any, output_format: str) -> None:
 
 def resolve_path(path: Optional[str], default_to_messages_dir: bool = True) -> str:
     """Resolve path with appropriate default fallback.
-    
+
     Args:
         path: User-provided path or None
         default_to_messages_dir: If True, default to messages_dir; otherwise use cwd
-        
+
     Returns:
         Resolved path string
     """
     if path:
         return path
-    
+
     cfg = config_manager.config
     if default_to_messages_dir:
         return cfg.paths.messages_dir
-    
+
     return str(Path.cwd())
 
 
@@ -108,11 +108,19 @@ _REPORT_METHOD_MAP = {
     },
     "sessions": {
         "method": "generate_sessions_summary_report",
-        "params": {"base_path": _PATH_PLACEHOLDER, "limit": None, "output_format": "table"},
+        "params": {
+            "base_path": _PATH_PLACEHOLDER,
+            "limit": None,
+            "output_format": "table",
+        },
     },
     "daily": {
         "method": "generate_daily_report",
-        "params": {"base_path": _PATH_PLACEHOLDER, "month": None, "output_format": "table"},
+        "params": {
+            "base_path": _PATH_PLACEHOLDER,
+            "month": None,
+            "output_format": "table",
+        },
     },
     "weekly": {
         "method": "generate_weekly_report",
@@ -126,7 +134,11 @@ _REPORT_METHOD_MAP = {
     },
     "monthly": {
         "method": "generate_monthly_report",
-        "params": {"base_path": _PATH_PLACEHOLDER, "year": None, "output_format": "table"},
+        "params": {
+            "base_path": _PATH_PLACEHOLDER,
+            "year": None,
+            "output_format": "table",
+        },
     },
     "models": {
         "method": "generate_models_report",
@@ -157,14 +169,25 @@ _REPORT_METHOD_MAP = {
     "--config", "-c", type=click.Path(exists=True), help="Path to configuration file"
 )
 @click.option(
-    "--theme", "-t", type=click.Choice(["dark", "light"]), help="Set UI theme (overrides config)"
+    "--theme",
+    "-t",
+    type=click.Choice(["dark", "light"]),
+    help="Set UI theme (overrides config)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 @click.option(
-    "--no-remote", is_flag=True, help="Disable remote pricing fallback (local-only mode)"
+    "--no-remote",
+    is_flag=True,
+    help="Disable remote pricing fallback (local-only mode)",
 )
 @click.pass_context
-def cli(ctx: click.Context, config: Optional[str], theme: Optional[str], verbose: bool, no_remote: bool):
+def cli(
+    ctx: click.Context,
+    config: Optional[str],
+    theme: Optional[str],
+    verbose: bool,
+    no_remote: bool,
+):
     """OpenCode Monitor - Analytics and monitoring for OpenCode sessions.
 
     Monitor token usage, costs, and performance metrics from your OpenCode
@@ -182,14 +205,14 @@ def cli(ctx: click.Context, config: Optional[str], theme: Optional[str], verbose
             config_manager.reload()
 
         cfg = config_manager.config
-        
+
         # Override theme if provided via CLI
         if theme:
             cfg.ui.theme = theme
-        
+
         # Store no_remote flag in context for later use
         ctx.obj["no_remote"] = no_remote
-            
+
         ctx.obj["config"] = cfg
         ctx.obj["pricing_data"] = config_manager.load_pricing_data(no_remote=no_remote)
 
@@ -264,10 +287,14 @@ def session(ctx: click.Context, path: Optional[str], output_format: str):
     "--no-group", is_flag=True, help="Show sessions without workflow grouping"
 )
 @click.option(
-    "--source", "-s",
+    "--source",
+    "-s",
     type=click.Choice(["auto", "sqlite", "files"]),
     default="auto",
-    help="Data source: auto (prefer SQLite), sqlite (v1.2.0+), or files (legacy)"
+    help="Data source: auto (prefer SQLite), sqlite (v1.2.0+), or files (legacy)",
+)
+@click.option(
+    "--days", "-d", type=int, default=None, help="Filter sessions from the last N days"
 )
 @click.pass_context
 def sessions(
@@ -277,6 +304,7 @@ def sessions(
     limit: Optional[int],
     no_group: bool,
     source: str,
+    days: Optional[int],
 ):
     """Analyze all OpenCode sessions.
 
@@ -295,42 +323,83 @@ def sessions(
 
         # Get data source info
         source_info = analyzer.get_data_source_info()
-        console.print(f"[status.info]Using data source: {source_info['last_used'] or 'auto-detect'}[/status.info]")
+        console.print(
+            f"[status.info]Using data source: {source_info['last_used'] or 'auto-detect'}[/status.info]"
+        )
 
-        if limit:
-            sessions_list = analyzer.analyze_all_sessions(path, limit)
-            console.print(f"[status.info]Analyzing {len(sessions_list)} most recent sessions...[/status.info]")
-        else:
-            sessions_list = analyzer.analyze_all_sessions(path)
-            console.print(f"[status.info]Analyzing {len(sessions_list)} sessions...[/status.info]")
+        # Load all sessions first (without limit)
+        sessions_list = analyzer.analyze_all_sessions(path)
+        console.print(
+            f"[status.info]Analyzing {len(sessions_list)} sessions...[/status.info]"
+        )
 
         if not sessions_list:
-            console.print("[status.error]No sessions found in the specified directory.[/status.error]")
+            console.print(
+                "[status.error]No sessions found in the specified directory.[/status.error]"
+            )
             ctx.exit(1)
 
-        result = report_generator.generate_sessions_summary_report(
-            path, limit, output_format, group_workflows=not no_group
-        )
+        # Apply date filtering if --days is specified
+        if days is not None:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=days - 1)
+            sessions_list = analyzer.filter_sessions_by_date(
+                sessions_list, start_date, end_date
+            )
+            console.print(
+                f"[status.info]Filtering to {len(sessions_list)} sessions from the last {days} day(s)...[/status.info]"
+            )
+
+        # Apply limit after date filtering
+        if limit is not None:
+            sessions_list = sessions_list[:limit]
+            console.print(
+                f"[status.info]Limited to {len(sessions_list)} most recent sessions[/status.info]"
+            )
+
+        # Generate summary and display report using filtered sessions
+        summary = analyzer.get_sessions_summary(sessions_list)
+        result = {
+            "type": "sessions_summary",
+            "sessions": sessions_list,
+            "summary": summary,
+        }
+
+        if output_format == "table":
+            if not no_group:
+                report_generator._display_workflow_sessions_table(
+                    sessions_list, summary
+                )
+            else:
+                report_generator._display_sessions_summary_table(sessions_list, summary)
+        elif output_format == "json":
+            result = report_generator._format_sessions_summary_json(
+                sessions_list, summary
+            )
+        elif output_format == "csv":
+            result = report_generator._format_sessions_summary_csv(sessions_list)
 
         handle_output_format(result, output_format)
 
 
 def _determine_monitoring_source(source: str, validation: dict) -> tuple[bool, bool]:
     """Determine which monitoring source to use based on validation and user preference.
-    
+
     Args:
         source: User-specified source preference ("auto", "sqlite", or "files")
         validation: Validation result dict containing availability info
-        
+
     Returns:
         Tuple of (use_sqlite, use_files) booleans
     """
     sqlite_available = validation["info"]["sqlite"]["available"]
     files_available = validation["info"]["files"].get("available", False)
-    
+
     use_sqlite = (source == "sqlite") or (source == "auto" and sqlite_available)
-    use_files = (source == "files") or (source == "auto" and not sqlite_available and files_available)
-    
+    use_files = (source == "files") or (
+        source == "auto" and not sqlite_available and files_available
+    )
+
     return use_sqlite, use_files
 
 
@@ -347,7 +416,7 @@ def _prompt_workflow_selection(
     config,
 ) -> tuple[Optional[str], str]:
     """Prompt user to select a workflow for monitoring.
-    
+
     Args:
         live_monitor: LiveMonitor instance
         use_sqlite: Whether to use SQLite mode
@@ -359,7 +428,7 @@ def _prompt_workflow_selection(
         pick: Whether to prompt for workflow selection
         console: Rich console instance
         config: Configuration instance
-        
+
     Returns:
         Tuple of (selected_session_id, mode) where mode is "sqlite", "files",
         "cancelled" (user dismissed picker), or "" (no data source available).
@@ -371,7 +440,9 @@ def _prompt_workflow_selection(
         if pick and not selected_session_id:
             selected_session_id = live_monitor.pick_sqlite_workflow()
             if not selected_session_id:
-                console.print("[status.warning]No workflow selected. Exiting.[/status.warning]")
+                console.print(
+                    "[status.warning]No workflow selected. Exiting.[/status.warning]"
+                )
                 return None, "cancelled"
         return selected_session_id, "sqlite"
 
@@ -382,7 +453,9 @@ def _prompt_workflow_selection(
             assert path is not None
             selected_session_id = live_monitor.pick_file_workflow(path)
             if not selected_session_id:
-                console.print("[status.warning]No workflow selected. Exiting.[/status.warning]")
+                console.print(
+                    "[status.warning]No workflow selected. Exiting.[/status.warning]"
+                )
                 return None, "cancelled"
         return selected_session_id, "files"
 
@@ -391,12 +464,12 @@ def _prompt_workflow_selection(
 
 def _display_validation_results(console, validation: dict, ctx) -> bool:
     """Display validation results and exit if critical errors found.
-    
+
     Args:
         console: Rich console instance
         validation: Validation result dict
         ctx: Click context for exiting
-        
+
     Returns:
         True if validation passed, False if ctx.exit was called
     """
@@ -405,11 +478,11 @@ def _display_validation_results(console, validation: dict, ctx) -> bool:
             console.print(f"[status.error]Error: {issue}[/status.error]")
         ctx.exit(1)
         return False
-    
+
     if validation["warnings"]:
         for warning in validation["warnings"]:
             console.print(f"[status.warning]Warning: {warning}[/status.warning]")
-    
+
     return True
 
 
@@ -435,10 +508,11 @@ def _display_validation_results(console, validation: dict, ctx) -> bool:
     help="Enable in-dashboard workflow switching controls (experimental)",
 )
 @click.option(
-    "--source", "-s",
+    "--source",
+    "-s",
     type=click.Choice(["auto", "sqlite", "files"]),
     default="auto",
-    help="Data source: auto (prefer SQLite), sqlite (v1.2.0+), or files (legacy)"
+    help="Data source: auto (prefer SQLite), sqlite (v1.2.0+), or files (legacy)",
 )
 @click.pass_context
 def live(
@@ -480,10 +554,10 @@ def live(
 
         sqlite_available = validation["info"]["sqlite"]["available"]
         files_available = validation["info"]["files"].get("available", False)
-        
+
         # Determine which monitoring method to use
         use_sqlite, use_files = _determine_monitoring_source(source, validation)
-        
+
         # Prompt for workflow selection
         selected_session_id, mode = _prompt_workflow_selection(
             live_monitor,
@@ -497,9 +571,11 @@ def live(
             console,
             config,
         )
-        
+
         if mode == "":
-            console.print("[status.error]No data source available. Please check OpenCode installation.[/status.error]")
+            console.print(
+                "[status.error]No data source available. Please check OpenCode installation.[/status.error]"
+            )
             ctx.exit(1)
             return
 
@@ -516,7 +592,9 @@ def live(
         elif mode == "files":
             if not path:
                 path = config.paths.messages_dir
-            console.print("[status.success]Starting workflow live dashboard (legacy file mode)[/status.success]")
+            console.print(
+                "[status.success]Starting workflow live dashboard (legacy file mode)[/status.success]"
+            )
             console.print(f"[status.info]Monitoring: {path}[/status.info]")
             console.print(f"[status.info]Update interval: {interval}s[/status.info]")
             live_monitor.start_monitoring(
@@ -779,42 +857,41 @@ def projects(
         handle_output_format(result, output_format)
 
 
-def _generate_export_report(report_type: str, path: Optional[str], report_generator) -> Optional[dict]:
+def _generate_export_report(
+    report_type: str, path: Optional[str], report_generator
+) -> Optional[dict]:
     """Generate report data for export based on report type.
-    
+
     Args:
         report_type: Type of report to generate
         path: Path to analyze
         report_generator: ReportGenerator instance
-        
+
     Returns:
         Report data dictionary or None if report type is invalid
     """
     if report_type not in _REPORT_METHOD_MAP:
         return None
-    
+
     report_config = _REPORT_METHOD_MAP[report_type]
     method_name = report_config["method"]
     params = report_config["params"].copy()
-    
+
     # Replace path placeholders with actual path value
     for key in params:
         if params[key] is _PATH_PLACEHOLDER:
             params[key] = path
-    
+
     # Get the method from report_generator and call it with unpacked params
     method = getattr(report_generator, method_name)
     return method(**params)
 
 
 def _display_export_summary(
-    console, 
-    output_path: str, 
-    export_service, 
-    report_type: str
+    console, output_path: str, export_service, report_type: str
 ) -> None:
     """Display export completion summary.
-    
+
     Args:
         console: Rich console instance
         output_path: Path to the exported file
@@ -823,10 +900,16 @@ def _display_export_summary(
     """
     summary = export_service.get_export_summary(output_path)
     console.print(f"[status.success]✅ Export completed successfully![/status.success]")
-    console.print(f"[metric.label]File:[/metric.label] [metric.value]{output_path}[/metric.value]")
-    console.print(f"[metric.label]Size:[/metric.label] [metric.value]{summary.get('size_human', 'Unknown')}[/metric.value]")
+    console.print(
+        f"[metric.label]File:[/metric.label] [metric.value]{output_path}[/metric.value]"
+    )
+    console.print(
+        f"[metric.label]Size:[/metric.label] [metric.value]{summary.get('size_human', 'Unknown')}[/metric.value]"
+    )
     if "rows" in summary:
-        console.print(f"[metric.label]Rows:[/metric.label] [metric.value]{summary['rows']}[/metric.value]")
+        console.print(
+            f"[metric.label]Rows:[/metric.label] [metric.value]{summary['rows']}[/metric.value]"
+        )
 
 
 @cli.command()
@@ -910,23 +993,45 @@ def config_show(ctx: click.Context):
         console.print("[table.title]📋 Current Configuration:[/table.title]")
         console.print()
         console.print("[table.header]📁 Paths:[/table.header]")
-        console.print(f"  [metric.label]Database file:[/metric.label] [metric.value]{config.paths.database_file}[/metric.value]")
-        console.print(f"  [metric.label]Messages directory:[/metric.label] [metric.value]{config.paths.messages_dir}[/metric.value]")
-        console.print(f"  [metric.label]Export directory:[/metric.label] [metric.value]{config.paths.export_dir}[/metric.value]")
+        console.print(
+            f"  [metric.label]Database file:[/metric.label] [metric.value]{config.paths.database_file}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Messages directory:[/metric.label] [metric.value]{config.paths.messages_dir}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Export directory:[/metric.label] [metric.value]{config.paths.export_dir}[/metric.value]"
+        )
         console.print()
         console.print("[table.header]🎨 UI Settings:[/table.header]")
-        console.print(f"  [metric.label]Table style:[/metric.label] [metric.value]{config.ui.table_style}[/metric.value]")
-        console.print(f"  [metric.label]Theme:[/metric.label] [metric.value]{config.ui.theme}[/metric.value]")
-        console.print(f"  [metric.label]Progress bars:[/metric.label] [metric.value]{config.ui.progress_bars}[/metric.value]")
-        console.print(f"  [metric.label]Colors:[/metric.label] [metric.value]{config.ui.colors}[/metric.value]")
-        console.print(f"  [metric.label]Live refresh interval:[/metric.label] [metric.value]{config.ui.live_refresh_interval}s[/metric.value]")
+        console.print(
+            f"  [metric.label]Table style:[/metric.label] [metric.value]{config.ui.table_style}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Theme:[/metric.label] [metric.value]{config.ui.theme}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Progress bars:[/metric.label] [metric.value]{config.ui.progress_bars}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Colors:[/metric.label] [metric.value]{config.ui.colors}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Live refresh interval:[/metric.label] [metric.value]{config.ui.live_refresh_interval}s[/metric.value]"
+        )
         console.print()
         console.print("[table.header]📤 Export Settings:[/table.header]")
-        console.print(f"  [metric.label]Default format:[/metric.label] [metric.value]{config.export.default_format}[/metric.value]")
-        console.print(f"  [metric.label]Include metadata:[/metric.label] [metric.value]{config.export.include_metadata}[/metric.value]")
+        console.print(
+            f"  [metric.label]Default format:[/metric.label] [metric.value]{config.export.default_format}[/metric.value]"
+        )
+        console.print(
+            f"  [metric.label]Include metadata:[/metric.label] [metric.value]{config.export.include_metadata}[/metric.value]"
+        )
         console.print()
         console.print("[table.header]🤖 Models:[/table.header]")
-        console.print(f"  [metric.label]Configured models:[/metric.label] [metric.value]{len(pricing_data)}[/metric.value]")
+        console.print(
+            f"  [metric.label]Configured models:[/metric.label] [metric.value]{len(pricing_data)}[/metric.value]"
+        )
         for model_name in sorted(pricing_data.keys()):
             console.print(f"    - [table.row.model]{model_name}[/table.row.model]")
 
@@ -960,12 +1065,16 @@ def agents(ctx: click.Context):
         registry = AgentRegistry()
         console = ctx.obj["console"]
 
-        console.print("[table.header]Main agents[/table.header] [dim](stay in same session)[/dim]:")
+        console.print(
+            "[table.header]Main agents[/table.header] [dim](stay in same session)[/dim]:"
+        )
         for agent in sorted(registry.get_all_main_agents()):
             console.print(f"  - [table.row.main]{agent}[/table.row.main]")
 
         console.print()
-        console.print("[table.header]Sub-agents[/table.header] [dim](create separate sessions)[/dim]:")
+        console.print(
+            "[table.header]Sub-agents[/table.header] [dim](create separate sessions)[/dim]:"
+        )
         for agent in sorted(registry.get_all_sub_agents()):
             console.print(f"  - [table.row.model]{agent}[/table.row.model]")
 

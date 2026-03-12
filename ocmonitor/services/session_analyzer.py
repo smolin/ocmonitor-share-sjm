@@ -8,8 +8,14 @@ from decimal import Decimal
 
 from ..models.session import SessionData, InteractionFile, TokenUsage
 from ..models.analytics import (
-    DailyUsage, WeeklyUsage, MonthlyUsage, ModelUsageStats,
-    ModelBreakdownReport, ModelDetailStats, ProjectBreakdownReport, TimeframeAnalyzer
+    DailyUsage,
+    WeeklyUsage,
+    MonthlyUsage,
+    ModelUsageStats,
+    ModelBreakdownReport,
+    ModelDetailStats,
+    ProjectBreakdownReport,
+    TimeframeAnalyzer,
 )
 from ..utils.file_utils import FileProcessor
 from ..utils.data_loader import DataLoader, DataSourceError
@@ -31,32 +37,34 @@ class SessionAnalyzer:
 
     def load_session_hierarchy(self, base_path: Optional[str] = None) -> Dict[str, Any]:
         """Load sessions organized by parent-child hierarchy.
-        
+
         Uses the DataLoader which prefers SQLite but falls back to files.
-        
+
         Args:
             base_path: Optional path override (used only for file-based loading)
-            
+
         Returns:
             Dictionary with:
                 - 'root_sessions': List of parent sessions with sub_agents
                 - 'all_sessions': Flat list of all sessions
                 - 'source': 'sqlite' or 'files'
-                
+
         Raises:
             DataSourceError: If no data source is available
         """
         return self._data_loader.load_session_hierarchy()
 
-    def analyze_all_sessions(self, base_path: Optional[str] = None, limit: Optional[int] = None) -> List[SessionData]:
+    def analyze_all_sessions(
+        self, base_path: Optional[str] = None, limit: Optional[int] = None
+    ) -> List[SessionData]:
         """Analyze all sessions from the preferred data source.
-        
+
         Uses the DataLoader which prefers SQLite but falls back to files.
-        
+
         Args:
             base_path: Optional path override (used only for file-based loading)
             limit: Maximum number of sessions to analyze
-            
+
         Returns:
             List of SessionData objects
         """
@@ -64,7 +72,7 @@ class SessionAnalyzer:
 
     def get_data_source_info(self) -> Dict[str, Any]:
         """Get information about the current data source.
-        
+
         Returns:
             Dictionary with source availability and paths
         """
@@ -93,16 +101,16 @@ class SessionAnalyzer:
         """
         if not sessions:
             return {
-                'total_sessions': 0,
-                'total_interactions': 0,
-                'total_tokens': TokenUsage(),
-                'total_cost': Decimal('0.0'),
-                'models_used': [],
-                'date_range': 'No sessions'
+                "total_sessions": 0,
+                "total_interactions": 0,
+                "total_tokens": TokenUsage(),
+                "total_cost": Decimal("0.0"),
+                "models_used": [],
+                "date_range": "No sessions",
             }
 
         total_tokens = TokenUsage()
-        total_cost = Decimal('0.0')
+        total_cost = Decimal("0.0")
         total_interactions = 0
         models_used = set()
         start_times = []
@@ -125,24 +133,26 @@ class SessionAnalyzer:
                 end_times.append(session.end_time)
 
         # Calculate date range
-        date_range = 'Unknown'
+        date_range = "Unknown"
         if start_times and end_times:
             earliest = min(start_times)
             latest = max(end_times)
             if earliest.date() == latest.date():
-                date_range = earliest.strftime('%Y-%m-%d')
+                date_range = earliest.strftime("%Y-%m-%d")
             else:
-                date_range = f"{earliest.strftime('%Y-%m-%d')} to {latest.strftime('%Y-%m-%d')}"
+                date_range = (
+                    f"{earliest.strftime('%Y-%m-%d')} to {latest.strftime('%Y-%m-%d')}"
+                )
 
         return {
-            'total_sessions': len(sessions),
-            'total_interactions': total_interactions,
-            'total_tokens': total_tokens,
-            'total_cost': total_cost,
-            'models_used': sorted(list(models_used)),
-            'date_range': date_range,
-            'earliest_session': min(start_times) if start_times else None,
-            'latest_session': max(end_times) if end_times else None
+            "total_sessions": len(sessions),
+            "total_interactions": total_interactions,
+            "total_tokens": total_tokens,
+            "total_cost": total_cost,
+            "models_used": sorted(list(models_used)),
+            "date_range": date_range,
+            "earliest_session": min(start_times) if start_times else None,
+            "latest_session": max(end_times) if end_times else None,
         }
 
     def create_daily_breakdown(self, sessions: List[SessionData]) -> List[DailyUsage]:
@@ -156,7 +166,9 @@ class SessionAnalyzer:
         """
         return TimeframeAnalyzer.create_daily_breakdown(sessions)
 
-    def create_weekly_breakdown(self, sessions: List[SessionData], week_start_day: int = 0) -> List[WeeklyUsage]:
+    def create_weekly_breakdown(
+        self, sessions: List[SessionData], week_start_day: int = 0
+    ) -> List[WeeklyUsage]:
         """Create weekly usage breakdown.
 
         Args:
@@ -169,7 +181,9 @@ class SessionAnalyzer:
         daily_usage = self.create_daily_breakdown(sessions)
         return TimeframeAnalyzer.create_weekly_breakdown(daily_usage, week_start_day)
 
-    def create_monthly_breakdown(self, sessions: List[SessionData]) -> List[MonthlyUsage]:
+    def create_monthly_breakdown(
+        self, sessions: List[SessionData]
+    ) -> List[MonthlyUsage]:
         """Create monthly usage breakdown.
 
         Args:
@@ -182,10 +196,13 @@ class SessionAnalyzer:
         weekly_usage = TimeframeAnalyzer.create_weekly_breakdown(daily_usage)
         return TimeframeAnalyzer.create_monthly_breakdown(weekly_usage)
 
-    def create_model_breakdown(self, sessions: List[SessionData],
-                             timeframe: str = "all",
-                             start_date: Optional[date] = None,
-                             end_date: Optional[date] = None) -> ModelBreakdownReport:
+    def create_model_breakdown(
+        self,
+        sessions: List[SessionData],
+        timeframe: str = "all",
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> ModelBreakdownReport:
         """Create model usage breakdown.
 
         Args:
@@ -201,10 +218,13 @@ class SessionAnalyzer:
             sessions, self.pricing_data, timeframe, start_date, end_date
         )
 
-    def create_project_breakdown(self, sessions: List[SessionData],
-                               timeframe: str = "all",
-                               start_date: Optional[date] = None,
-                               end_date: Optional[date] = None) -> ProjectBreakdownReport:
+    def create_project_breakdown(
+        self,
+        sessions: List[SessionData],
+        timeframe: str = "all",
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> ProjectBreakdownReport:
         """Create project usage breakdown.
 
         Args:
@@ -220,10 +240,18 @@ class SessionAnalyzer:
             sessions, self.pricing_data, timeframe, start_date, end_date
         )
 
-    def filter_sessions_by_date(self, sessions: List[SessionData],
-                               start_date: Optional[date] = None,
-                               end_date: Optional[date] = None) -> List[SessionData]:
+    def filter_sessions_by_date(
+        self,
+        sessions: List[SessionData],
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+    ) -> List[SessionData]:
         """Filter sessions by date range.
+
+        A session is included if it has ANY activity during the date range:
+        - Started within the range, OR
+        - Ended within the range, OR
+        - Spans the range (started before and ended after)
 
         Args:
             sessions: List of sessions to filter
@@ -238,14 +266,39 @@ class SessionAnalyzer:
 
         filtered = []
         for session in sessions:
-            if session.start_time:
-                session_date = session.start_time.date()
-                if TimeUtils.date_in_range(session_date, start_date, end_date):
+            # Check if session has any activity in the date range
+            session_start_date = (
+                session.start_time.date() if session.start_time else None
+            )
+            session_end_date = (
+                session.end_time.date() if session.end_time else session_start_date
+            )
+
+            if session_start_date:
+                # Include if: started in range OR ended in range OR spans the range
+                in_range = False
+
+                # Check if start date is in range
+                if TimeUtils.date_in_range(session_start_date, start_date, end_date):
+                    in_range = True
+                # Check if end date is in range
+                elif session_end_date and TimeUtils.date_in_range(
+                    session_end_date, start_date, end_date
+                ):
+                    in_range = True
+                # Check if session spans the range (started before, ended after)
+                elif session_end_date and start_date and end_date:
+                    if session_start_date < start_date and session_end_date > end_date:
+                        in_range = True
+
+                if in_range:
                     filtered.append(session)
 
         return filtered
 
-    def filter_sessions_by_model(self, sessions: List[SessionData], models: List[str]) -> List[SessionData]:
+    def filter_sessions_by_model(
+        self, sessions: List[SessionData], models: List[str]
+    ) -> List[SessionData]:
         """Filter sessions by models used.
 
         Args:
@@ -290,35 +343,48 @@ class SessionAnalyzer:
         total_cost = session.calculate_total_cost(self.pricing_data)
 
         # Calculate averages
-        avg_tokens_per_interaction = session_tokens.total // session.interaction_count if session.interaction_count > 0 else 0
-        avg_cost_per_interaction = total_cost / session.interaction_count if session.interaction_count > 0 else Decimal('0.0')
+        avg_tokens_per_interaction = (
+            session_tokens.total // session.interaction_count
+            if session.interaction_count > 0
+            else 0
+        )
+        avg_cost_per_interaction = (
+            total_cost / session.interaction_count
+            if session.interaction_count > 0
+            else Decimal("0.0")
+        )
 
         # Time analysis
         time_stats = {}
         if session.start_time and session.end_time:
             time_stats = {
-                'start_time': session.start_time,
-                'end_time': session.end_time,
-                'duration_ms': session.duration_ms,
-                'total_processing_time_ms': session.total_processing_time_ms,
-                'avg_processing_time_ms': session.total_processing_time_ms // session.interaction_count if session.interaction_count > 0 else 0
+                "start_time": session.start_time,
+                "end_time": session.end_time,
+                "duration_ms": session.duration_ms,
+                "total_processing_time_ms": session.total_processing_time_ms,
+                "avg_processing_time_ms": session.total_processing_time_ms
+                // session.interaction_count
+                if session.interaction_count > 0
+                else 0,
             }
 
         return {
-            'session_id': session.session_id,
-            'interaction_count': session.interaction_count,
-            'models_used': session.models_used,
-            'total_tokens': session_tokens,
-            'total_cost': total_cost,
-            'model_breakdown': model_breakdown,
-            'averages': {
-                'tokens_per_interaction': avg_tokens_per_interaction,
-                'cost_per_interaction': avg_cost_per_interaction
+            "session_id": session.session_id,
+            "interaction_count": session.interaction_count,
+            "models_used": session.models_used,
+            "total_tokens": session_tokens,
+            "total_cost": total_cost,
+            "model_breakdown": model_breakdown,
+            "averages": {
+                "tokens_per_interaction": avg_tokens_per_interaction,
+                "cost_per_interaction": avg_cost_per_interaction,
             },
-            'time_analysis': time_stats
+            "time_analysis": time_stats,
         }
 
-    def calculate_burn_rate(self, session_path: str, timeframe_minutes: int = 5) -> float:
+    def calculate_burn_rate(
+        self, session_path: str, timeframe_minutes: int = 5
+    ) -> float:
         """Calculate token burn rate for a session.
 
         Args:
@@ -389,35 +455,47 @@ class SessionAnalyzer:
             warnings.append(f"{missing_time} interactions missing time data")
 
         # Check for unknown models
-        unknown_models = [model for model in session.models_used if model not in self.pricing_data and model != 'unknown']
+        unknown_models = [
+            model
+            for model in session.models_used
+            if model not in self.pricing_data and model != "unknown"
+        ]
         if unknown_models:
-            warnings.append(f"Unknown models with no pricing: {', '.join(unknown_models)}")
+            warnings.append(
+                f"Unknown models with no pricing: {', '.join(unknown_models)}"
+            )
 
         # Check for very high costs
         total_cost = session.calculate_total_cost(self.pricing_data)
-        if total_cost > Decimal('50.0'):  # Arbitrary threshold
+        if total_cost > Decimal("50.0"):  # Arbitrary threshold
             warnings.append(f"High session cost: ${total_cost:.2f}")
 
         # Check for extremely long interactions
         long_interactions = []
         for file in session.files:
-            if file.time_data and file.time_data.duration_ms and file.time_data.duration_ms > 300000:  # 5 minutes
+            if (
+                file.time_data
+                and file.time_data.duration_ms
+                and file.time_data.duration_ms > 300000
+            ):  # 5 minutes
                 long_interactions.append(file.file_name)
 
         if long_interactions:
-            warnings.append(f"Long interactions (>5min): {len(long_interactions)} files")
+            warnings.append(
+                f"Long interactions (>5min): {len(long_interactions)} files"
+            )
 
         return {
-            'healthy': len(issues) == 0,
-            'issues': issues,
-            'warnings': warnings,
-            'stats': {
-                'total_interactions': session.interaction_count,
-                'empty_interactions': empty_interactions,
-                'missing_time_data': missing_time,
-                'unknown_models': len(unknown_models),
-                'total_cost': total_cost
-            }
+            "healthy": len(issues) == 0,
+            "issues": issues,
+            "warnings": warnings,
+            "stats": {
+                "total_interactions": session.interaction_count,
+                "empty_interactions": empty_interactions,
+                "missing_time_data": missing_time,
+                "unknown_models": len(unknown_models),
+                "total_cost": total_cost,
+            },
         }
 
     def find_matching_models(self, query: str) -> List[str]:
