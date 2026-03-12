@@ -180,6 +180,12 @@ _REPORT_METHOD_MAP = {
     is_flag=True,
     help="Disable remote pricing fallback (local-only mode)",
 )
+@click.option(
+    "--color",
+    type=click.Choice(["always", "auto", "never"]),
+    default="auto",
+    help="Force color output: always, auto (default), or never",
+)
 @click.pass_context
 def cli(
     ctx: click.Context,
@@ -187,6 +193,7 @@ def cli(
     theme: Optional[str],
     verbose: bool,
     no_remote: bool,
+    color: str,
 ):
     """OpenCode Monitor - Analytics and monitoring for OpenCode sessions.
 
@@ -220,6 +227,14 @@ def cli(
         theme_name = cfg.ui.theme
         theme_obj = get_theme(theme_name)
         console = Console(theme=theme_obj)
+
+        # Apply --color setting
+        if color == "always":
+            console._color_system = "true"
+        elif color == "never":
+            console._color_system = None
+        # "auto" keeps the default TTY detection
+
         ctx.obj["console"] = console
 
         # Initialize services
@@ -491,7 +506,6 @@ def _display_validation_results(console, validation: dict, ctx) -> bool:
 @click.option(
     "--interval", "-i", type=int, default=None, help="Update interval in seconds"
 )
-@click.option("--no-color", is_flag=True, help="Disable colored output")
 @click.option(
     "--pick",
     is_flag=True,
@@ -519,7 +533,6 @@ def live(
     ctx: click.Context,
     path: Optional[str],
     interval: Optional[int],
-    no_color: bool,
     pick: bool,
     session_id: Optional[str],
     interactive_switch: bool,
@@ -538,10 +551,6 @@ def live(
 
     if interval is None:
         interval = config.ui.live_refresh_interval
-
-    # Disable colors if requested
-    if no_color:
-        console._color_system = None
 
     try:
         live_monitor = ctx.obj["live_monitor"]
